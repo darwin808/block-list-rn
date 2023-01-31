@@ -1,123 +1,120 @@
-import { StatusBar } from "expo-status-bar";
-import { Button, StyleSheet, Text, View } from "react-native";
 import React from "react";
-import * as Location from "expo-location";
-import axios from "axios";
+import { StyleSheet, Text, View, Button } from "react-native";
 import * as BackgroundFetch from "expo-background-fetch";
 import * as TaskManager from "expo-task-manager";
+import axios from "axios";
 
+const URL = "http://192.168.100.18:3000/api/";
+// const URL = "https://blocklist-proj-be.vercel.app/api/";
 const BACKGROUND_FETCH_TASK = "background-fetch";
-// const URL = "http://192.168.100.18:3000/api/";
-const URL = "https://blocklist-proj-be.vercel.app/api/";
 
-const LOCATION_TASK_NAME = "background-location-task";
+// 1. Define the task by providing a name and the function that should be executed
+// Note: This needs to be called in the global scope (e.g outside of your React components)
+TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
+  const now = Date.now();
 
-const requestPermissions = async () => {
-  const { status: foregroundStatus } =
-    await Location.requestForegroundPermissionsAsync();
-  if (foregroundStatus === "granted") {
-    const { status: backgroundStatus } =
-      await Location.requestBackgroundPermissionsAsync();
-    if (backgroundStatus === "granted") {
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.Balanced,
-      });
-    }
-  }
-};
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
-  if (error) {
-    console.log(error);
-    // Error occurred - check `error.message` for more details.
-    return;
-  }
-  if (data) {
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
+  const payload = {
+    lat: "nodata",
+    long: "no data",
+    time: "123",
+  };
+  await axios
+    .post(URL, payload, { headers: headers })
+    .then(function (response) {
+      console.log(response.data, 5555555);
+    })
+    .catch(function (error) {
+      console.error(error);
+    });
+  console.log(
+    `Got background fetch call at date: ${new Date(now).toISOString()}`
+  );
 
-    const payload = {
-      lat: data?.locations[0]?.coords.latitude,
-      long: data?.locations[0]?.coords?.longitude,
-      time: data?.locations[0]?.timestamp,
-    };
-
-    const postLocation = async () => {
-      await axios
-        .post(URL, payload, { headers: headers })
-        .then(function (response) {
-          console.log(response.data, 5555555);
-        })
-        .catch(function (error) {
-          console.error(error);
-        });
-    };
-
-    const runContinues = async () => {
-      await postLocation();
-      setTimeout(runContinues, 10000);
-    };
-
-    runContinues();
-    // do something with the locations captured in the background
-  }
+  // Be sure to return the successful result type!
+  return BackgroundFetch.BackgroundFetchResult.NewData;
 });
 
-export default function App() {
-  // const [location, setlocation] = React.useState<any>();
-  // const getPosition = async () => {
-  //   let { status } = await Location.requestForegroundPermissionsAsync();
-  //   if (status !== "granted") {
-  //     console.log("Permission to access location was denied");
-  //     return;
-  //   }
+// 2. Register the task at some point in your app by providing the same name,
+// and some configuration options for how the background fetch should behave
+// Note: This does NOT need to be in the global scope and CAN be used in your React components!
+async function registerBackgroundFetchAsync() {
+  return BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
+    minimumInterval: 60 * 1, // 15 minutes
+    stopOnTerminate: false, // android only,
+    startOnBoot: true, // android only
+  });
+}
 
-  //   let curentLocation = await Location.getCurrentPositionAsync({});
-  //   setlocation(curentLocation);
-  // };
+// 3. (Optional) Unregister tasks by specifying the task name
+// This will cancel any future background fetch calls that match the given name
+// Note: This does NOT need to be in the global scope and CAN be used in your React components!
+async function unregisterBackgroundFetchAsync() {
+  return BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK);
+}
 
-  // const postLocation = async () => {
-  //   const headers = {
-  //     "Content-Type": "application/json",
-  //     Accept: "application/json",
-  //   };
-  //   const payload = {
-  //     lat: location?.coords?.latitude,
-  //     long: location?.coords?.longitude,
-  //     time: new Date(),
-  //   };
-  //   await axios
-  //     .post(URL, payload, { headers: headers })
-  //     .then(function (response) {
-  //       console.log(response.data, 5555555);
-  //     })
-  //     .catch(function (error) {
-  //       console.error(error);
-  //     });
-  // };
+export default function BackgroundFetchScreen() {
+  const [isRegistered, setIsRegistered] = React.useState(false);
+  const [status, setStatus] = React.useState(null);
 
-  // const runContinues = async () => {
-  //   await postLocation();
-  //   setTimeout(runContinues, 5000);
-  // };
+  React.useEffect(() => {
+    checkStatusAsync();
+  }, []);
 
-  // React.useEffect(() => {
-  //   getPosition();
-  // }, []);
+  const checkStatusAsync = async () => {
+    const status: any = await BackgroundFetch.getStatusAsync();
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(
+      BACKGROUND_FETCH_TASK
+    );
+    setStatus(status);
+    setIsRegistered(isRegistered);
+  };
 
-  // React.useEffect(() => {
-  //   runContinues();
-  // }, []);
+  const toggleFetchTask = async () => {
+    if (isRegistered) {
+      await unregisterBackgroundFetchAsync();
+    } else {
+      await registerBackgroundFetchAsync();
+    }
+
+    checkStatusAsync();
+  };
 
   return (
-    <View>
-      <Text>darwin</Text>
-      <Button onPress={requestPermissions} title="Enable background location" />
-      <StatusBar style="auto" />
+    <View style={styles.container}>
+      <View>
+        <Text>
+          Background fetch status:{" "}
+          <Text>{status && BackgroundFetch.BackgroundFetchStatus[status]}</Text>
+        </Text>
+        <Text>
+          Background fetch task name:{" "}
+          <Text>
+            {isRegistered ? BACKGROUND_FETCH_TASK : "Not registered yet!"}
+          </Text>
+        </Text>
+      </View>
+      <View></View>
+      <Button
+        title={
+          isRegistered
+            ? "Unregister BackgroundFetch task"
+            : "Register BackgroundFetch task"
+        }
+        onPress={toggleFetchTask}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
